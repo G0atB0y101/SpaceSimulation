@@ -1,15 +1,16 @@
 import java.awt.*;
-
+import java.lang.Math;
 
 public class Element {
-    private int x, y, dx, dy;
+    private int x, y, dx, dy, radius;
 
     // Constructor that initializes the x and y positions and the velocity
-    public Element(int x, int y, int dx, int dy) {
+    public Element(int x, int y, int dx, int dy, int radius) {
         this.x = x;
         this.y = y;
         this.dx = dx;
         this.dy = dy;
+        this.radius = radius;
     }
 
 //#region //Getters for private variables 
@@ -24,6 +25,9 @@ public class Element {
     }
     public int getdY() {
         return dy;
+    }
+    public int getRadius() {
+        return radius;
     }
 //#endregion
 
@@ -40,6 +44,9 @@ public class Element {
     public void setdY(int dy) {
         this.dy = dy;
     }
+    public void setRadius(int radius) {
+        this.radius = radius;
+    }
 //#endregion
 
 
@@ -53,7 +60,17 @@ public class Element {
     }
 
     public boolean collidesWith(Element other) {
-        return this.x == other.x && this.y == other.y;
+        System.out.println(this.x + "  "
+                        + this.y + "  "
+                        + other.getX() + "  "
+                        + other.getY() );
+        double distance = Math.sqrt(Math.pow(other.getX() - this.x, 2) + Math.pow(other.getY() - this.y, 2));
+        if (distance <= (this.radius + other.getRadius())) {
+            System.out.println(distance);
+            return true;
+        } else {
+            return false;
+        }
     }
 
 }   
