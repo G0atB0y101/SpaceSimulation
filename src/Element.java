@@ -2,15 +2,17 @@ import java.awt.*;
 import java.lang.Math;
 
 public class Element {
-    private int x, y, dx, dy, radius;
+    private int x, y, dx, dy, radius, mass, density;
 
     // Constructor that initializes the x and y positions and the velocity
-    public Element(int x, int y, int dx, int dy, int radius) {
+    public Element(int x, int y, int dx, int dy, int radius, int mass, int density) {
         this.x = x;
         this.y = y;
         this.dx = dx;
         this.dy = dy;
         this.radius = radius;
+        this.mass = mass;
+        this.density = density;
     }
 
 //#region //Getters for private variables 
@@ -28,6 +30,12 @@ public class Element {
     }
     public int getRadius() {
         return radius;
+    }
+    public int getMass() {
+        return mass;
+    }
+    public int getDensity() {
+        return density;
     }
 //#endregion
 
@@ -47,6 +55,12 @@ public class Element {
     public void setRadius(int radius) {
         this.radius = radius;
     }
+    public void setMass(int mass) {
+        this.mass = mass;
+    }
+    public void setDensity(int density) {
+        this.density = density;
+    }
 //#endregion
 
 
@@ -60,13 +74,10 @@ public class Element {
     }
 
     public boolean collidesWith(Element other) {
-        System.out.println(this.x + "  "
-                        + this.y + "  "
-                        + other.getX() + "  "
-                        + other.getY() );
-        double distance = Math.sqrt(Math.pow(other.getX() - this.x, 2) + Math.pow(other.getY() - this.y, 2));
+        int difx = this.getX() - other.getX();
+        int dify = this.getY() - other.getY();
+        double distance = Math.sqrt(difx * difx + dify * dify);        
         if (distance <= (this.radius + other.getRadius())) {
-            System.out.println(distance);
             return true;
         } else {
             return false;
