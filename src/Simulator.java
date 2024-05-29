@@ -1,11 +1,13 @@
 import java.awt.*;
 import java.awt.event.*;
+import javax.swing.*;
+
+import java.util.Iterator;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import javax.swing.*;
 
 public class Simulator extends JPanel implements ActionListener, KeyListener{
     final int FWidth = 1000;
@@ -18,7 +20,7 @@ public class Simulator extends JPanel implements ActionListener, KeyListener{
     
     private int lowSpeedBound = -2;
     private int highSpeedBound = 2;
-    private int FPS = 120;
+    private double FPS = 1;
     private int elementSize = 10;
 
     Timer simLoop;
@@ -44,7 +46,7 @@ public class Simulator extends JPanel implements ActionListener, KeyListener{
             spatialHashMap.get(cellIndex).add(element);
         }
 
-        simLoop = new Timer(1000/FPS, this);
+        simLoop = new Timer((int) (1000/FPS), this);
         simLoop.start();
     }
 
@@ -62,43 +64,69 @@ public class Simulator extends JPanel implements ActionListener, KeyListener{
     }
 
     @Override
-    public void actionPerformed(ActionEvent e) { //called every 1000 milliseconds by gameLoop timer
+    public void actionPerformed(ActionEvent e) { 
+        List<Element> elementsToRemove = new ArrayList<>();
+        List<Element> elementsToAdd = new ArrayList<>();
+        
         for (List<Element> elements : spatialHashMap.values()) {
-            for (int i = 0; i < elements.size(); i++) {
-                Element element = elements.get(i);
-                int cellIndex = (element.getX() / cellSize) * numCellsX + (element.getY() / cellSize);
+            Iterator<Element> iterator = elements.iterator();
+            while (iterator.hasNext()) {
+                Element element = iterator.next();
+                Integer cellIndex = (element.getX() / cellSize) * numCellsX + (element.getY() / cellSize);
                 List<Integer> neighborCells = getNeighborCells(cellIndex);
                 neighborCells.add(cellIndex);
+                
+                boolean elementCollided = false;
                 for (int neighborCell : neighborCells) {
                     if (spatialHashMap.containsKey(neighborCell)) {
                         for (Element neighborElement : spatialHashMap.get(neighborCell)) {
-                            // Collision 
+                            // Collision
                             if (element.collidesWith(neighborElement) && element != neighborElement) {
-                                    elements.set(i, combineElements(element, neighborElement));
-                                    spatialHashMap.get(neighborCell).remove(neighborElement);
-                                    break;
-                            // Gravity
-                            /*    int difx = element.getX() - neighborElement.getX();
-                                int dify = element.getY() - neighborElement.getY();
-                                double distance = Math.sqrt(difx * difx + dify * dify);
-                                 if (distance < GRAVITY_RANGE) {
-                                    double force = GRAVITATIONAL_CONSTANT * element.getMass() * neighborElement.getMass() / (distance * distance);
-                                    double angle = Math.atan2(dify, difx);
-                                    int ddx = (int) (force * Math.cos(angle));
-                                    int ddy = (int) (force * Math.sin(angle));
-                                    element.setdX(element.getdX() + ddx);
-                                    element.setdY(element.getdY() + ddy);
-                                } */
+                                elementsToRemove.add(element);
+                                elementsToRemove.add(neighborElement);
+                                elementsToAdd.add(combineElements(element, neighborElement));
+                                elementCollided = true;
+                                break;
                             }
                         }
                     }
+                    if (elementCollided) break;
                 }
-                element.move();
+                
+                if (!elementCollided) {
+                    element.move(); 
+                    Integer newCellIndex = (element.getX() / cellSize) * numCellsX + (element.getY() / cellSize);
+                    if (!newCellIndex.equals(cellIndex)) {
+                        iterator.remove();
+                        spatialHashMap.computeIfAbsent(newCellIndex, k -> new ArrayList<>()).add(element);
+                    }
+                }
             }
         }
+        
+        for (Element element : elementsToRemove) {
+            Integer cellIndex = (element.getX() / cellSize) * numCellsX + (element.getY() / cellSize);
+            spatialHashMap.get(cellIndex).remove(element);
+        }
+        for (Element element : elementsToAdd) {
+            Integer cellIndex = (element.getX() / cellSize) * numCellsX + (element.getY() / cellSize);
+            spatialHashMap.computeIfAbsent(cellIndex, k -> new ArrayList<>()).add(element);
+        }
+        
         repaint();
-    }
-
+    }    
+    // Gravity
+                                /*    int difx = element.getX() - neighborElement.getX();
+                                    int dify = element.getY() - neighborElement.getY();
+                                    double distance = Math.sqrt(difx * difx + dify * dify);
+                                    if (distance < GRAVITY_RANGE) {
+                                        double force = GRAVITATIONAL_CONSTANT * element.getMass() * neighborElement.getMass() / (distance * distance);
+                                        double angle = Math.atan2(dify, difx);
+                                        int ddx = (int) (force * Math.cos(angle));
+                                        int ddy = (int) (force * Math.sin(angle));
+                                        element.setdX(element.getdX() + ddx);
+                                        element.setdY(element.getdY() + ddy);
+                                    } */
     public List<Integer> getNeighborCells(int cellIndex) {
         List<Integer> neighborCells = new ArrayList<>();
         int numCells = numCellsX * numCellsY;
@@ -120,14 +148,14 @@ public class Simulator extends JPanel implements ActionListener, KeyListener{
 
     }
 
-    private Element combineElements(Element e1, Element e2) {
-        int x = (e1.getX() + e2.getX()) / 2;
-        int y = (e1.getY() + e2.getY()) / 2;
-        int dx = e1.getdX() + e2.getdX();
-        int dy = e1.getdY() + e2.getdY();
-        int radius = (int) Math.sqrt(e1.getRadius() * e1.getRadius() + e2.getRadius() * e2.getRadius());
-        int mass = e1.getMass() + e2.getMass();
-        return new Element(x, y, dx, dy, radius, mass, 1);
+    private static Element combineElements(Element self, Element other) {
+        self.setX((self.getX() + other.getX()) / 2);
+        self.setY((self.getY() + other.getY()) / 2);
+        self.setdX(self.getdX() - other.getdX());
+        self.setdY(self.getdY() - other.getdY());
+        self.setRadius((int) Math.sqrt(self.getRadius() * self.getRadius() + other.getRadius() * other.getRadius()));
+        self.setMass(self.getMass() + other.getMass());
+        return self;
     }
 
     @Override
