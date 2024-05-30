@@ -10,14 +10,17 @@ import java.util.Map;
 import java.util.Random;
 
 public class Simulator extends JPanel implements ActionListener, KeyListener{
-    final int FWidth = 1000;
-    final int FHeight = 1000;
-    final int cellSize = 100;
-    final int numCellsX = FWidth / cellSize;
-    final int numCellsY = FHeight / cellSize;
+    private final int FWidth = 1000;
+    private final int FHeight = 1000;
+
+
+    private final int[] cellSizes = {100, 300, 500};
+    private Map<Integer, Map<Integer, List<Element>>> spatialHashMapLOD = new HashMap<>();
+
     private final double GRAVITATIONAL_CONSTANT = 0.01;
     private final int GRAVITY_RANGE = 500;
     
+
     private int lowSpeedBound = -2;
     private int highSpeedBound = 2;
     private double FPS = 1;
@@ -27,28 +30,31 @@ public class Simulator extends JPanel implements ActionListener, KeyListener{
     Map<Integer, List<Element>> spatialHashMap = new HashMap<>();
 
     Simulator() {
-        setPreferredSize(new Dimension(FWidth, FHeight));
-        setFocusable(true);
-        addKeyListener(this);
+    setPreferredSize(new Dimension(FWidth, FHeight));
+    setFocusable(true);
+    addKeyListener(this);
 
-        for(int i = 0; i < 500; i++) {
+    for (int cellSize : cellSizes) {
+        spatialHashMapLOD.put(cellSize, new HashMap<>());
+        for (int i = 0; i < 500; i++) {
             int x = new Random().nextInt(FWidth);
             int y = new Random().nextInt(FHeight);
-            int dx = new Random().nextInt(highSpeedBound - lowSpeedBound + 1) 
+            int dx = new Random().nextInt(highSpeedBound - lowSpeedBound + 1)
                     * (new Random().nextInt(2) * 2 - 1) + lowSpeedBound;
-            int dy = new Random().nextInt(highSpeedBound - lowSpeedBound + 1) 
+            int dy = new Random().nextInt(highSpeedBound - lowSpeedBound + 1)
                     * (new Random().nextInt(2) * 2 - 1) + lowSpeedBound;
             Element element = new Element(x, y, dx, dy, elementSize, 1, 1);
-            int cellIndex = (x / cellSize) * numCellsX + (y / cellSize);
-            if (!spatialHashMap.containsKey(cellIndex)) {
-                spatialHashMap.put(cellIndex, new ArrayList<>());
+            int cellIndex = (x / cellSize) * (FWidth / cellSize) + (y / cellSize);
+            if (!spatialHashMapLOD.get(cellSize).containsKey(cellIndex)) {
+                spatialHashMapLOD.get(cellSize).put(cellIndex, new ArrayList<>());
             }
-            spatialHashMap.get(cellIndex).add(element);
+            spatialHashMapLOD.get(cellSize).get(cellIndex).add(element);
         }
-
-        simLoop = new Timer((int) (1000/FPS), this);
-        simLoop.start();
     }
+
+    simLoop = new Timer((int) (1000/FPS), this);
+    simLoop.start();
+}
 
     public void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -64,57 +70,87 @@ public class Simulator extends JPanel implements ActionListener, KeyListener{
     }
 
     @Override
-    public void actionPerformed(ActionEvent e) { 
+    public void actionPerformed(ActionEvent e) {
         List<Element> elementsToRemove = new ArrayList<>();
         List<Element> elementsToAdd = new ArrayList<>();
-        
-        for (List<Element> elements : spatialHashMap.values()) {
-            Iterator<Element> iterator = elements.iterator();
-            while (iterator.hasNext()) {
-                Element element = iterator.next();
-                Integer cellIndex = (element.getX() / cellSize) * numCellsX + (element.getY() / cellSize);
-                List<Integer> neighborCells = getNeighborCells(cellIndex);
-                neighborCells.add(cellIndex);
-                
-                boolean elementCollided = false;
-                for (int neighborCell : neighborCells) {
-                    if (spatialHashMap.containsKey(neighborCell)) {
-                        for (Element neighborElement : spatialHashMap.get(neighborCell)) {
-                            // Collision
-                            if (element.collidesWith(neighborElement) && element != neighborElement) {
-                                elementsToRemove.add(element);
-                                elementsToRemove.add(neighborElement);
-                                elementsToAdd.add(combineElements(element, neighborElement));
-                                elementCollided = true;
-                                break;
-                            }
+    
+        for (Map<Integer, List<Element>> spatialHashMap : spatialHashMapLOD.values()) {
+            for (List<Element> elements : spatialHashMap.values()) {
+                for (Element element : elements) {
+                    int cellSize = determineCellSize(element.getRadius());
+                    Integer cellIndex = getCellIndex(element, cellSize);
+                    List<Integer> neighborCells = getNeighborCells(cellIndex, cellSize);
+                    neighborCells.add(cellIndex);
+    
+                    if (handleCollisions(element, neighborCells, spatialHashMap, elementsToRemove, elementsToAdd)) {
+                        elementsToRemove.add(element);
+                    } else {
+                        element.move();
+                        Integer newCellIndex = getCellIndex(element, cellSize);
+                        if (!newCellIndex.equals(cellIndex)) {
+                            elementsToRemove.add(element);
+                            elementsToAdd.add(element);
                         }
-                    }
-                    if (elementCollided) break;
-                }
-                
-                if (!elementCollided) {
-                    element.move(); 
-                    Integer newCellIndex = (element.getX() / cellSize) * numCellsX + (element.getY() / cellSize);
-                    if (!newCellIndex.equals(cellIndex)) {
-                        iterator.remove();
-                        spatialHashMap.computeIfAbsent(newCellIndex, k -> new ArrayList<>()).add(element);
                     }
                 }
             }
         }
-        
-        for (Element element : elementsToRemove) {
-            Integer cellIndex = (element.getX() / cellSize) * numCellsX + (element.getY() / cellSize);
-            spatialHashMap.get(cellIndex).remove(element);
-        }
-        for (Element element : elementsToAdd) {
-            Integer cellIndex = (element.getX() / cellSize) * numCellsX + (element.getY() / cellSize);
-            spatialHashMap.computeIfAbsent(cellIndex, k -> new ArrayList<>()).add(element);
-        }
-        
+    
+        removeElements(elementsToRemove);
+        addElements(elementsToAdd);
+    
         repaint();
-    }    
+    }
+
+    private int determineCellSize(int radius) {
+        if (radius > 100) return cellSizes[2];
+        if (radius > 50) return cellSizes[1];
+        return cellSizes[0];
+    }
+
+    private Integer getCellIndex(Element element, int cellSize) {
+        return (element.getX() / cellSize) * (FWidth / cellSize) + (element.getY() / cellSize);
+    }
+
+    private boolean handleCollisions(Element element, List<Integer> neighborCells, Map<Integer, List<Element>> spatialHashMap, 
+                                    List<Element> elementsToRemove, List<Element> elementsToAdd) {
+        for (int neighborCell : neighborCells) {
+            if (spatialHashMap.containsKey(neighborCell)) {
+                for (Element neighborElement : spatialHashMap.get(neighborCell)) {
+                    if (element.collidesWith(neighborElement) && element != neighborElement) {
+                        elementsToRemove.add(element);
+                        elementsToRemove.add(neighborElement);
+                        elementsToAdd.add(combineElements(element, neighborElement));
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private void removeElements(List<Element> elementsToRemove) {
+        for (Element element : elementsToRemove) {
+            int cellSize = determineCellSize(element.getRadius());
+            Integer cellIndex = getCellIndex(element, cellSize);
+            List<Element> cellElements = spatialHashMapLOD.get(cellSize).get(cellIndex);
+            if (cellElements!= null) {
+                cellElements.remove(element);
+                if (cellElements.isEmpty()) {
+                    spatialHashMapLOD.get(cellSize).remove(cellIndex);
+                }
+            }
+        }
+    }
+    
+    private void addElements(List<Element> elementsToAdd) {
+        for (Element element : elementsToAdd) {
+            int cellSize = determineCellSize(element.getRadius());
+            Integer cellIndex = getCellIndex(element, cellSize);
+            spatialHashMapLOD.get(cellSize).computeIfAbsent(cellIndex, k -> new ArrayList<>()).add(element);
+        }
+    }
+
     // Gravity
                                 /*    int difx = element.getX() - neighborElement.getX();
                                     int dify = element.getY() - neighborElement.getY();
@@ -127,25 +163,24 @@ public class Simulator extends JPanel implements ActionListener, KeyListener{
                                         element.setdX(element.getdX() + ddx);
                                         element.setdY(element.getdY() + ddy);
                                     } */
-    public List<Integer> getNeighborCells(int cellIndex) {
+    public List<Integer> getNeighborCells(int cellIndex, int cellSize) {
         List<Integer> neighborCells = new ArrayList<>();
-        int numCells = numCellsX * numCellsY;
-        int x = cellIndex % numCellsX;
-        int y = cellIndex / numCellsX;
+        int numCells = (FWidth / cellSize) * (FHeight / cellSize);
+        int x = cellIndex % (FWidth / cellSize);
+        int y = cellIndex / (FWidth / cellSize);
         neighborCells.add(cellIndex - 1);
         neighborCells.add(cellIndex + 1);
-        neighborCells.add(cellIndex - numCellsX - 1);
-        neighborCells.add(cellIndex - numCellsX);
-        neighborCells.add(cellIndex - numCellsX + 1);
-        neighborCells.add(cellIndex + numCellsX - 1);
-        neighborCells.add(cellIndex + numCells);
-        neighborCells.add(cellIndex + numCellsX + 1);
+        neighborCells.add(cellIndex - (FWidth / cellSize) - 1);
+        neighborCells.add(cellIndex - (FWidth / cellSize));
+        neighborCells.add(cellIndex - (FWidth / cellSize) + 1);
+        neighborCells.add(cellIndex + (FWidth / cellSize) - 1);
+        neighborCells.add(cellIndex + (FWidth / cellSize));
+        neighborCells.add(cellIndex + (FWidth / cellSize) + 1);
         neighborCells.removeIf(
-            a -> a < 0 || a >= numCells || ((a % numCellsX == 0 || numCellsX == numCellsY -1) && x != 0 && x != numCellsX - 1)
-            || ((a / numCellsX == 0 || a / numCellsX == numCellsY - 1) && y != 0 && y != numCellsY - 1)
+            a -> a < 0 || a >= numCells || ((a % (FWidth / cellSize) == 0 || (FWidth / cellSize) == (FHeight / cellSize) - 1) && x!= 0 && x!= (FWidth / cellSize) - 1)
+            || ((a / (FWidth / cellSize) == 0 || a / (FWidth / cellSize) == (FHeight / cellSize) - 1) && y!= 0 && y!= (FHeight / cellSize) - 1)
         );
         return neighborCells;
-
     }
 
     private static Element combineElements(Element self, Element other) {
